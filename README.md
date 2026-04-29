@@ -1,54 +1,35 @@
-# Welcome
-
-```plain
  _   _                 _       _____         _            _        
 | | | |               | |     |  _  |       | |          | |       
 | |_| | __ _ _ __   __| | ___ | | | |_ __   | |     __ _ | |__  ___
 |  _  |/ _` | '_ \ / _` |/ __|| | | | '_ \  | |    / _` || '_ \/ __|
 | | | | (_| | | | | (_| |\__ \\ \_/ / | | | | |___| (_| || |_) \__ \
 \_| |_/\__,_|_| |_|\__,_||___/ \___/|_| |_| \_____/\__,_||_.__/|___/
-```
 
-## REMOVE THIS BLOCK BEFORE PUBLISHING
 
-THIS IS AN EXAMPLE. REPLACE THIS WITH YOUR OWN README.md using the pattern below.
 
-This is customer facing so please make it look professional. Thanks.
-
-This file can be updated and will be copied to the console desktop at startup.
-
-> **NOTE:** this file is public so NEVER include passwords. The official HOL Password is stored in the PASSWORD.txt that is copied to the console at boot.
-
-## Lab Details
-
-```plain
 * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - *
-*                       HOL-2701 VCF-Highlights Lab                             *
+*                       HOL-2701-01 VCF-Highlights Lab                          *
 * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - *
-```
+                                                                               
 
-###  Primary benefits of your lab
+=== Primary benefits of your lab ===
 
-Provide information about the lab here
+This lab outlines a high-level focus on the new features of VMware Cloud Foundation (VCF) 9.1, timed with the General Availability release. The lab is divided into six main modules, beginning with VCF UX updates. It details new capabilities in VCF Operations, such as a unified console for diagnostics and logging, and VCF Automation, which introduces AppStack Formations and Infrastructure Policies. Additionally, the lab explores updates to underlying components like vSphere, new vSAN features (including Global Dedupe), and advanced VCF Networking functionality.
 
-### Featured Product(s)
+=== Featured Product(s) ===
 
-More detail about your lab: Products/Features covered in this lab.
+vCenter
+ESX
+vSAN
+NSX
+VCF Operations
+VCF Automation
 
-* Product 1
-* Product 2
-* Feature 1
-* Feature 2
+=== All Modules ===
 
-Additional notes and "interesting" facts about your lab. (pre-release code, simulated data, etc.)
+All acccounts use the standard Hands-on Labs password.
 
-## Modules
-
-Please record account names for this lab. All acccounts use the standard Hands-on Labs password.
-
-### === Module 1 ===
-
-Credentials for all vCenter Operations Manager Instances:
+vCenter Operations Manager Instances:
 User name: admin
 
 For vCenter Server Administration Console:
@@ -57,17 +38,34 @@ User name: root
 For the vSphere Client, use:
 User name: administrator@vsphere.local
 
-### === Module 2 ===
+For the ESX Host Client, use:
+User name: root
 
-big long command line that nobody wants to type
+For the NSX Console, use:
+User name: admin
 
-## Lab Authors
+=== Lab Authors ===
 
-### Principal
+== Principals ==
 
-* Principal Name:
+Brad Bentley
+Christopher Lewis
+Dwayne Callahan
+Jim LaFollette
+Katherine Skilling
 
-### Captain(s)
+== Captains ==
 
-* Captain:
-* Captain:
+Brock Peterson
+Chris Horning
+Cosmin Trif
+David Hensley
+Fred Hofer
+Kate Rychlik
+Leslie Harris
+Scott Bowe
+Shannon Fitzpatrick
+Sorin Platon
+Thomas Kopton
+
+Thank you for taking our 2701-01 - VCF 9.1 Highlights lab! Please consider taking some of our other labs to get familiar with more of our solutions.
