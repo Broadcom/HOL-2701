@@ -68,4 +68,4 @@ Shannon Fitzpatrick
 Sorin Platon
 Thomas Kopton
 
-Thank you for taking our 2701-01 Lab - VCF 9.1 Highlights! Pleaes consider taking some of our other labs to get familior with more of our solutioins.
+Thank you for taking our 2701-01 - VCF 9.1 Highlights lab! Please consider taking some of our other labs to get familiar with more of our solutions.
