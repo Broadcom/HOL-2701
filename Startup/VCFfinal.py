@@ -2325,7 +2325,7 @@ echo "PROXY_CONFIGURED"
                                   f'{len(vcfa_vms_errors)} errors')
         else:
             dashboard.update_task('vcffinal', 'vcfa_vms', TaskStatus.COMPLETE)
-        dashboard.update_task('vcffinal', 'vcf_component_urls', TaskStatus.RUNNING)
+        dashboard.update_task('vcffinal', 'vcfa_urls', TaskStatus.RUNNING)
         dashboard.generate_html()
     
     #==========================================================================
@@ -2517,7 +2517,7 @@ echo "PROXY_CONFIGURED"
                                 lsf.write_output('  CAPI/CAPV pods in failure state - restarting containerd and kubelet')
                                 vcfa_ssh('systemctl restart containerd kubelet')
                                 time.sleep(30)
-                                lsf.write_output('  Waiting for CAPI/CAPV controllers to recover...')
+                                lsf.write_output('  Waiting for CAPI/CAPV conollers to recover...')
                                 vcfa_ssh(
                                     f'{kctl_prefix} kubectl rollout status deployment '
                                     f'capv-controller-manager -n vmsp-platform --timeout=60s 2>/dev/null'
@@ -2572,7 +2572,7 @@ echo "PROXY_CONFIGURED"
                                 import datetime
                                 created = sw_data.get('metadata', {}).get('creationTimestamp', '')
                                 if created:
-                                    created_dt = datetime.datetime.strptime(
+                                    createdt = datetime.datetime.strptime(
                                         created, '%Y-%m-%dT%H:%M:%SZ'
                                     ).replace(tzinfo=datetime.timezone.utc)
                                     age_secs = (datetime.datetime.now(datetime.timezone.utc) - created_dt).total_seconds()
@@ -2837,7 +2837,7 @@ echo "PROXY_CONFIGURED"
                                         lsf.write_output('  CSI controller became ready')
                                         break
                                 else:
-                                    lsf.write_output('  CSI controller still initializing after 60s (will continue)')
+                                  lsf.write_output('  CSI controller still initializing after 60s (will continue)')
                         
                         # ---- Step 12: RabbitMQ .erlang.cookie permissions ----
                         lsf.write_output('Checking RabbitMQ status...')
@@ -3101,7 +3101,99 @@ echo "PROXY_CONFIGURED"
             dashboard.generate_html()
     
     #==========================================================================
-    # TASK 5: Check VCF Component URLs
+    # TASK 5: Check VCF Automation URLs
+    #==========================================================================
+    
+    # Check for actual non-commented URL values, not just the presence of the option
+    vraurls = lsf.get_config_list('VCFFINAL', 'vraurls')
+    vcfa_urls_configured = len(vraurls) > 0
+    urls_checked = 0
+    urls_passed = 0
+    urls_failed = 0
+    
+    if vcfa_urls_configured:
+        lsf.write_output('Checking VCF Automation URLs...')
+        lsf.write_vpodprogress('VCF Automation URL Checks', 'GOOD-8')
+        
+        # Run remediation scripts before URL checks
+        # Check VCF Automation ssh for password expiration and fix if expired
+        lsf.write_output('Fixing expired automation password if necessary...')
+        vcfapwcheck_script = '/home/holuser/hol/Tools/vcfapwcheck.sh'
+        if os.path.isfile(vcfapwcheck_script) and not dry_run:
+            lsf.run_command(vcfapwcheck_script)
+        # If the lab_sku = HOL-2701, then run vcfa-stabilizer.sh
+        if lsf.lab_sku == 'HOL-2701':
+            lsf.write_output('Running vcfa-stabilizer.sh...')
+            import subprocess
+            try:
+                proc = subprocess.Popen(
+                    ['/bin/bash', '/home/holuser/hol/Tools/vcfa-stabilizer.sh'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1
+                )
+                for line in proc.stdout:
+                    lsf.write_output(f'  {line.rstrip()}')
+                proc.wait(timeout=1800)
+            except subprocess.TimeoutExpired:
+                lsf.write_output('  [STDERR] Timeout executing vcfa-stabilizer.sh')
+                proc.kill()
+            except Exception as e:
+                lsf.write_output(f'  [STDERR] Error executing vcfa-stabilizer.sh: {e}')
+
+        # vraurls already retrieved above
+        
+        for url_spec in vraurls:
+            if ',' in url_spec:
+                parts = url_spec.split(',', 1)
+                url = parts[0].strip()
+                expected = parts[1].strip()
+            else:
+                url = url_spec.strip()
+                expected = None
+            
+            if url and not dry_run:
+                urls_checked += 1
+                lsf.write_output(f'Testing VCF Automation URL: {url}')
+                if expected:
+                    lsf.write_output(f'  Expected text: {expected}')
+                
+                # Retry loop - wait up to VCFA_URL_MAX_RETRIES minutes for URL to become available
+                url_success = False
+                for attempt in range(1, VCFA_URL_MAX_RETRIES + 1):
+                    result = lsf.test_url(url, expected_text=expected, verify_ssl=False, timeout=30)
+                    if result:
+                        lsf.write_output(f'  [SUCCESS] {url} (attempt {attempt})')
+                        url_success = True
+                        urls_passed += 1
+                        break
+                    else:
+                        if attempt == VCFA_URL_MAX_RETRIES:
+                            # Final attempt failed - fail the lab
+                            lsf.write_output(f'  [FAILED] {url} after {VCFA_URL_MAX_RETRIES} attempts')
+                            urls_failed += 1
+                            lsf.labfail(f'VCF Automation URL {url} not accessible after {VCFA_URL_MAX_RETRIES} minutes - should be reached in under 8 minutes')
+                        else:
+                            lsf.write_output(f'  Sleeping and will try again... {attempt} / {VCFA_URL_MAX_RETRIES}')
+                            lsf.labstartup_sleep(VCFA_URL_RETRY_DELAY)
+        
+        lsf.write_output(f'VCF Automation URL check complete: {urls_passed}/{urls_checked} passed')
+    else:
+        lsf.write_output('No VCF Automation URLs configured')
+    
+    if dashboard:
+        if urls_failed > 0:
+            dashboard.update_task('vcffinal', 'vcfa_urls', TaskStatus.FAILED, 
+                                  f'{urls_failed}/{urls_checked} URLs failed')
+        else:
+            dashboard.update_task('vcffinal', 'vcfa_urls', TaskStatus.COMPLETE,
+                                  f'{urls_passed} URLs verified' if urls_checked > 0 else '')
+        dashboard.update_task('vcffinal', 'vcf_component_urls', TaskStatus.RUNNING)
+        dashboard.generate_html()
+    
+    #==========================================================================
+    # TASK 6: Check VCF Component URLs
     #==========================================================================
     
     vcfcomponenturls = lsf.get_config_list('VCFFINAL', 'vcfcomponenturls')
@@ -3163,79 +3255,6 @@ echo "PROXY_CONFIGURED"
         else:
             dashboard.update_task('vcffinal', 'vcf_component_urls', TaskStatus.COMPLETE,
                                   f'{vcfc_urls_passed} URLs verified' if vcfc_urls_checked > 0 else '')
-        dashboard.update_task('vcffinal', 'vcfa_urls', TaskStatus.RUNNING)
-        dashboard.generate_html()
-    
-    #==========================================================================
-    # TASK 6: Check VCF Automation URLs
-    #==========================================================================
-    
-    # Check for actual non-commented URL values, not just the presence of the option
-    vraurls = lsf.get_config_list('VCFFINAL', 'vraurls')
-    vcfa_urls_configured = len(vraurls) > 0
-    urls_checked = 0
-    urls_passed = 0
-    urls_failed = 0
-    
-    if vcfa_urls_configured:
-        lsf.write_output('Checking VCF Automation URLs...')
-        lsf.write_vpodprogress('VCF Automation URL Checks', 'GOOD-8')
-        
-        # Run remediation scripts before URL checks
-        # Check VCF Automation ssh for password expiration and fix if expired
-        lsf.write_output('Fixing expired automation password if necessary...')
-        vcfapwcheck_script = '/home/holuser/hol/Tools/vcfapwcheck.sh'
-        if os.path.isfile(vcfapwcheck_script) and not dry_run:
-            lsf.run_command(vcfapwcheck_script)
-        
-        # vraurls already retrieved above
-        
-        for url_spec in vraurls:
-            if ',' in url_spec:
-                parts = url_spec.split(',', 1)
-                url = parts[0].strip()
-                expected = parts[1].strip()
-            else:
-                url = url_spec.strip()
-                expected = None
-            
-            if url and not dry_run:
-                urls_checked += 1
-                lsf.write_output(f'Testing VCF Automation URL: {url}')
-                if expected:
-                    lsf.write_output(f'  Expected text: {expected}')
-                
-                # Retry loop - wait up to VCFA_URL_MAX_RETRIES minutes for URL to become available
-                url_success = False
-                for attempt in range(1, VCFA_URL_MAX_RETRIES + 1):
-                    result = lsf.test_url(url, expected_text=expected, verify_ssl=False, timeout=30)
-                    if result:
-                        lsf.write_output(f'  [SUCCESS] {url} (attempt {attempt})')
-                        url_success = True
-                        urls_passed += 1
-                        break
-                    else:
-                        if attempt == VCFA_URL_MAX_RETRIES:
-                            # Final attempt failed - fail the lab
-                            lsf.write_output(f'  [FAILED] {url} after {VCFA_URL_MAX_RETRIES} attempts')
-                            urls_failed += 1
-                            lsf.labfail(f'VCF Automation URL {url} not accessible after {VCFA_URL_MAX_RETRIES} minutes - should be reached in under 8 minutes')
-                        else:
-                            lsf.write_output(f'  Sleeping and will try again... {attempt} / {VCFA_URL_MAX_RETRIES}')
-                            lsf.labstartup_sleep(VCFA_URL_RETRY_DELAY)
-        
-        lsf.write_output(f'VCF Automation URL check complete: {urls_passed}/{urls_checked} passed')
-    else:
-        lsf.write_output('No VCF Automation URLs configured')
-    
-    if dashboard:
-        if urls_failed > 0:
-            dashboard.update_task('vcffinal', 'vcfa_urls', TaskStatus.FAILED, 
-                                  f'{urls_failed}/{urls_checked} URLs failed')
-        else:
-            dashboard.update_task('vcffinal', 'vcfa_urls', TaskStatus.COMPLETE,
-                                  f'{urls_passed} URLs verified' if urls_checked > 0 else '')
-        dashboard.update_task('vcffinal', 'nsx_password', TaskStatus.RUNNING)
         dashboard.generate_html()
     
     #==========================================================================
@@ -3577,3 +3596,4 @@ if __name__ == '__main__':
         print()
     
     main(lsf=lsf, standalone=args.standalone, dry_run=args.dry_run)
+
