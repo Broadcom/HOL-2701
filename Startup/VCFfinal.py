@@ -2325,7 +2325,7 @@ echo "PROXY_CONFIGURED"
                                   f'{len(vcfa_vms_errors)} errors')
         else:
             dashboard.update_task('vcffinal', 'vcfa_vms', TaskStatus.COMPLETE)
-        dashboard.update_task('vcffinal', 'vcfa_urls', TaskStatus.RUNNING)
+        dashboard.update_task('vcffinal', 'vcf_component_urls', TaskStatus.RUNNING)
         dashboard.generate_html()
     
     #==========================================================================
@@ -3101,7 +3101,73 @@ echo "PROXY_CONFIGURED"
             dashboard.generate_html()
     
     #==========================================================================
-    # TASK 5: Check VCF Automation URLs
+    # TASK 5: Check VCF Component URLs
+    #==========================================================================
+    
+    vcfcomponenturls = lsf.get_config_list('VCFFINAL', 'vcfcomponenturls')
+    vcfc_urls_configured = len(vcfcomponenturls) > 0
+    vcfc_urls_checked = 0
+    vcfc_urls_passed = 0
+    vcfc_urls_failed = 0
+    
+    if vcfc_urls_configured:
+        lsf.write_output('Checking VCF Component URLs...')
+        lsf.write_vpodprogress('VCF Component URL Checks', 'GOOD-8')
+        
+        for url_spec in vcfcomponenturls:
+            if ',' in url_spec:
+                parts = url_spec.split(',', 1)
+                url = parts[0].strip()
+                expected = parts[1].strip()
+            else:
+                url = url_spec.strip()
+                expected = None
+            
+            if url and not dry_run:
+                vcfc_urls_checked += 1
+                lsf.write_output(f'Testing VCF Component URL: {url}')
+                if expected:
+                    lsf.write_output(f'  Expected text: {expected}')
+                
+                url_success = False
+                for attempt in range(1, VCFC_URL_MAX_RETRIES + 1):
+                    result = lsf.test_url(url, expected_text=expected, verify_ssl=False, timeout=30)
+                    if result:
+                        lsf.write_output(f'  [SUCCESS] {url} (attempt {attempt})')
+                        url_success = True
+                        vcfc_urls_passed += 1
+                        break
+                    else:
+                        if attempt == VCFC_URL_MAX_RETRIES:
+                            lsf.write_output(f'  [FAILED] {url} after {VCFC_URL_MAX_RETRIES} attempts')
+                            vcfc_urls_failed += 1
+                            lsf.labfail(f'VCF Component URL {url} not accessible after {VCFC_URL_MAX_RETRIES} minutes')
+                        else:
+                            if attempt == 5 and 'opslogs' in url.lower():
+                                lsf.write_output('  [WARNING] opslogs unreachable after 5 attempts. Re-scaling StatefulSets to 1...')
+                                pwd = lsf.get_password()
+                                lsf.ssh(f"echo '{pwd}' | sudo -S -i bash -c 'kubectl scale statefulset/log-processor statefulset/log-store -n ops-logs --replicas=1'", 'vmware-system-user@10.1.1.142', pwd)
+                                lsf.ssh(f"echo '{pwd}' | sudo -S -i bash -c 'kubectl annotate components.api.vmsp.vmware.com ops-logs component.vmsp.vmware.com/operational-status=Running --overwrite'", 'vmware-system-user@10.1.1.142', pwd)
+                            
+                            lsf.write_output(f'  Sleeping and will try again... {attempt} / {VCFC_URL_MAX_RETRIES}')
+                            lsf.labstartup_sleep(VCFC_URL_RETRY_DELAY)
+        
+        lsf.write_output(f'VCF Component URL check complete: {vcfc_urls_passed}/{vcfc_urls_checked} passed')
+    else:
+        lsf.write_output('No VCF Component URLs configured')
+    
+    if dashboard:
+        if vcfc_urls_failed > 0:
+            dashboard.update_task('vcffinal', 'vcf_component_urls', TaskStatus.FAILED,
+                                  f'{vcfc_urls_failed}/{vcfc_urls_checked} URLs failed')
+        else:
+            dashboard.update_task('vcffinal', 'vcf_component_urls', TaskStatus.COMPLETE,
+                                  f'{vcfc_urls_passed} URLs verified' if vcfc_urls_checked > 0 else '')
+        dashboard.update_task('vcffinal', 'vcfa_urls', TaskStatus.RUNNING)
+        dashboard.generate_html()
+    
+    #==========================================================================
+    # TASK 6: Check VCF Automation URLs
     #==========================================================================
     
     # Check for actual non-commented URL values, not just the presence of the option
@@ -3169,72 +3235,7 @@ echo "PROXY_CONFIGURED"
         else:
             dashboard.update_task('vcffinal', 'vcfa_urls', TaskStatus.COMPLETE,
                                   f'{urls_passed} URLs verified' if urls_checked > 0 else '')
-        dashboard.update_task('vcffinal', 'vcf_component_urls', TaskStatus.RUNNING)
-        dashboard.generate_html()
-    
-    #==========================================================================
-    # TASK 6: Check VCF Component URLs
-    #==========================================================================
-    
-    vcfcomponenturls = lsf.get_config_list('VCFFINAL', 'vcfcomponenturls')
-    vcfc_urls_configured = len(vcfcomponenturls) > 0
-    vcfc_urls_checked = 0
-    vcfc_urls_passed = 0
-    vcfc_urls_failed = 0
-    
-    if vcfc_urls_configured:
-        lsf.write_output('Checking VCF Component URLs...')
-        lsf.write_vpodprogress('VCF Component URL Checks', 'GOOD-8')
-        
-        for url_spec in vcfcomponenturls:
-            if ',' in url_spec:
-                parts = url_spec.split(',', 1)
-                url = parts[0].strip()
-                expected = parts[1].strip()
-            else:
-                url = url_spec.strip()
-                expected = None
-            
-            if url and not dry_run:
-                vcfc_urls_checked += 1
-                lsf.write_output(f'Testing VCF Component URL: {url}')
-                if expected:
-                    lsf.write_output(f'  Expected text: {expected}')
-                
-                url_success = False
-                for attempt in range(1, VCFC_URL_MAX_RETRIES + 1):
-                    result = lsf.test_url(url, expected_text=expected, verify_ssl=False, timeout=30)
-                    if result:
-                        lsf.write_output(f'  [SUCCESS] {url} (attempt {attempt})')
-                        url_success = True
-                        vcfc_urls_passed += 1
-                        break
-                    else:
-                        if attempt == VCFC_URL_MAX_RETRIES:
-                            lsf.write_output(f'  [FAILED] {url} after {VCFC_URL_MAX_RETRIES} attempts')
-                            vcfc_urls_failed += 1
-                            lsf.labfail(f'VCF Component URL {url} not accessible after {VCFC_URL_MAX_RETRIES} minutes')
-                        else:
-                            if attempt == 5 and 'opslogs' in url.lower():
-                                lsf.write_output('  [WARNING] opslogs unreachable after 5 attempts. Re-scaling StatefulSets to 1...')
-                                pwd = lsf.get_password()
-                                lsf.ssh(f"echo '{pwd}' | sudo -S -i bash -c 'kubectl scale statefulset/log-processor statefulset/log-store -n ops-logs --replicas=1'", 'vmware-system-user@10.1.1.142', pwd)
-                                lsf.ssh(f"echo '{pwd}' | sudo -S -i bash -c 'kubectl annotate components.api.vmsp.vmware.com ops-logs component.vmsp.vmware.com/operational-status=Running --overwrite'", 'vmware-system-user@10.1.1.142', pwd)
-                            
-                            lsf.write_output(f'  Sleeping and will try again... {attempt} / {VCFC_URL_MAX_RETRIES}')
-                            lsf.labstartup_sleep(VCFC_URL_RETRY_DELAY)
-        
-        lsf.write_output(f'VCF Component URL check complete: {vcfc_urls_passed}/{vcfc_urls_checked} passed')
-    else:
-        lsf.write_output('No VCF Component URLs configured')
-    
-    if dashboard:
-        if vcfc_urls_failed > 0:
-            dashboard.update_task('vcffinal', 'vcf_component_urls', TaskStatus.FAILED,
-                                  f'{vcfc_urls_failed}/{vcfc_urls_checked} URLs failed')
-        else:
-            dashboard.update_task('vcffinal', 'vcf_component_urls', TaskStatus.COMPLETE,
-                                  f'{vcfc_urls_passed} URLs verified' if vcfc_urls_checked > 0 else '')
+        dashboard.update_task('vcffinal', 'nsx_password', TaskStatus.RUNNING)
         dashboard.generate_html()
     
     #==========================================================================
