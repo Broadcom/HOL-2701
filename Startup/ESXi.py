@@ -330,7 +330,7 @@ def main(lsf=None, standalone=False, dry_run=False):
                         lsf.write_output(f'  {_host}: checking advanced system settings...')
                         _adv_settings = {
                             'Mem.ShareScanGHz': 0,
-                            'Mem.AllocGuestLargePage': 0,
+                            'Mem.AllocGuestLargePage': 1,
                         }
                         try:
                             _host_view = _content.viewManager.CreateContainerView(
