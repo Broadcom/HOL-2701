@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # ESXi.py - HOLFY27 Core ESXi Host Verification Module
-# Version 3.8 - 2026-08-18
+# Version 3.8.1 - 2026-08-18
 # Author - Burke Azbill and HOL Core Team
 # Verifies ESXi hosts are online and responsive
+# v3.8.1: Fix OptionManager target by using HostSystem.configManager.advancedOption instead of ServiceInstance.setting to resolve vim.fault.InvalidName for Mem.ShareScanGHz and Mem.AllocGuestLargePage.
 # v3.8: Disable Transparent Page Sharing (Mem.ShareScanGHz=0) and Large Page Support (Mem.AllocGuestLargePage=0) on each ESXi host.
 # v3.7: Combine vCPU count reduction and CPU topology changes into a single ConfigSpec reconfig task for auto-platform-a* VMs to prevent InvalidArgument (numCoresPerSocket) faults.
 # v3.6: HOL-2701 specific - cap auto-platform-a* (VCF Automation) VM at 24 vCPUs.
@@ -332,30 +333,39 @@ def main(lsf=None, standalone=False, dry_run=False):
                             'Mem.AllocGuestLargePage': 0,
                         }
                         try:
-                            _option_mgr = _content.setting
-                            for _setting_key, _target_val in _adv_settings.items():
-                                try:
-                                    _opts = _option_mgr.QueryOptions(name=_setting_key)
-                                    _cur_val = _opts[0].value if _opts else None
-                                    if _cur_val is not None and str(_cur_val) == str(_target_val):
+                            _host_view = _content.viewManager.CreateContainerView(
+                                _content.rootFolder, [vim.HostSystem], True
+                            )
+                            _host_obj = _host_view.view[0] if _host_view.view else None
+                            _host_view.Destroy()
+
+                            if _host_obj and _host_obj.configManager and _host_obj.configManager.advancedOption:
+                                _option_mgr = _host_obj.configManager.advancedOption
+                                for _setting_key, _target_val in _adv_settings.items():
+                                    try:
+                                        _opts = _option_mgr.QueryOptions(name=_setting_key)
+                                        _cur_val = _opts[0].value if _opts else None
+                                        if _cur_val is not None and str(_cur_val) == str(_target_val):
+                                            lsf.write_output(
+                                                f'    {_host}: {_setting_key}={_cur_val} - no change needed'
+                                            )
+                                        else:
+                                            lsf.write_output(
+                                                f'    {_host}: reconfiguring {_setting_key} '
+                                                f'({_cur_val} -> {_target_val})'
+                                            )
+                                            _opt_val = vim.option.OptionValue(key=_setting_key, value=_target_val)
+                                            _option_mgr.UpdateOptions(changedValue=[_opt_val])
+                                            lsf.write_output(
+                                                f'    {_host}: {_setting_key} updated to {_target_val}'
+                                            )
+                                            adv_settings_updated += 1
+                                    except Exception as _setting_err:
                                         lsf.write_output(
-                                            f'    {_host}: {_setting_key}={_cur_val} - no change needed'
+                                            f'    {_host}: FAILED to reconfigure {_setting_key}: {_setting_err}'
                                         )
-                                    else:
-                                        lsf.write_output(
-                                            f'    {_host}: reconfiguring {_setting_key} '
-                                            f'({_cur_val} -> {_target_val})'
-                                        )
-                                        _opt_val = vim.option.OptionValue(key=_setting_key, value=_target_val)
-                                        _option_mgr.UpdateOptions(changedValue=[_opt_val])
-                                        lsf.write_output(
-                                            f'    {_host}: {_setting_key} updated to {_target_val}'
-                                        )
-                                        adv_settings_updated += 1
-                                except Exception as _setting_err:
-                                    lsf.write_output(
-                                        f'    {_host}: FAILED to reconfigure {_setting_key}: {_setting_err}'
-                                    )
+                            else:
+                                lsf.write_output(f'    {_host}: HostSystem configManager.advancedOption not available')
                         except Exception as _adv_err:
                             lsf.write_output(
                                 f'    {_host}: FAILED to process advanced system settings: {_adv_err}'
